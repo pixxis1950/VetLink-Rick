@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["owner", "vet"] },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "linkedClinicId": { "type": "string" },
+        "address": { "type": "string" },
+        "paymentMethod": { "type": "string" }
+      },
+      "required": ["role", "name", "email"]
+    },
+    "Clinic": {
+      "title": "Clinic",
+      "description": "Veterinary clinic details",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["ownerId", "name", "address"]
+    },
+    "Pet": {
+      "title": "Pet",
+      "description": "Pet details",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "species": { "type": "string" },
+        "age": { "type": "string" },
+        "weight": { "type": "string" },
+        "color": { "type": "string" },
+        "breed": { "type": "string" },
+        "photo": { "type": "string" },
+        "vaccinations": { "type": "string" },
+        "chronicConditions": { "type": "string" },
+        "medications": { "type": "string" }
+      },
+      "required": ["ownerId", "name"]
+    },
+    "Case": {
+      "title": "Case",
+      "description": "Chat consultation/triage case",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "petId": { "type": "string" },
+        "clinicId": { "type": "string" },
+        "petName": { "type": "string" },
+        "issue": { "type": "string" },
+        "urgency": { "type": "string" },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "replied"] },
+        "timeAddedMs": { "type": "number" },
+        "ownerText": { "type": "string" },
+        "vetReply": { "type": "string" }
+      },
+      "required": ["ownerId", "petId", "clinicId", "issue", "status", "timeAddedMs"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Scheduled visit",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "clinicId": { "type": "string" },
+        "petId": { "type": "string" },
+        "petName": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "duration": { "type": "number" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["upcoming", "in-progress", "done"] }
+      },
+      "required": ["ownerId", "clinicId", "petId", "date", "time", "status"]
+    },
+    "Block": {
+      "title": "Block",
+      "description": "Available time block",
+      "type": "object",
+      "properties": {
+        "clinicId": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "duration": { "type": "number" }
+      },
+      "required": ["clinicId", "date", "time", "duration"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles including owners and vets."
+    },
+    "/clinics/{clinicId}": {
+      "schema": { "$ref": "#/entities/Clinic" },
+      "description": "Stores registered veterinary clinics."
+    },
+    "/pets/{petId}": {
+      "schema": { "$ref": "#/entities/Pet" },
+      "description": "Stores pets under users."
+    },
+    "/cases/{caseId}": {
+      "schema": { "$ref": "#/entities/Case" },
+      "description": "Stores triage chat cases."
+    },
+    "/appointments/{appointmentId}": {
+      "schema": { "$ref": "#/entities/Appointment" },
+      "description": "Stores booked appointments."
+    },
+    "/blocks/{blockId}": {
+      "schema": { "$ref": "#/entities/Block" },
+      "description": "Stores available timeslots created by clinics."
+    }
+  }
+}

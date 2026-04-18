@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if false; }
+
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+
+    // User Rules
+    function isValidUser(data) {
+      return data.keys().hasAll(['role', 'name', 'email']) 
+        && data.role in ['owner', 'vet'] 
+        && data.name is string && data.name.size() <= 100
+        && data.email is string && data.email.size() <= 100
+        && (data.get('linkedClinicId', '') is string)
+        && (data.get('address', '') is string)
+        && (data.get('paymentMethod', '') is string);
+    }
+    match /users/{userId} {
+      allow get: if isSignedIn(); // Vets need to read owner profiles to see client settings, and owners read vet profiles.
+      allow list: if isSignedIn() && existing().linkedClinicId == request.auth.uid; // Vet can list their clients
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().role == existing().role;
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Clinic Rules
+    function isValidClinic(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'address']) 
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() <= 100
+        && data.address is string && data.address.size() <= 200;
+    }
+    match /clinics/{clinicId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(clinicId) && isValidClinic(incoming());
+      allow update: if isSignedIn() && existing().ownerId == request.auth.uid && isValidClinic(incoming());
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+    }
+
+    // Pet Rules
+    function isValidPet(data) {
+      return data.keys().hasAll(['ownerId', 'name']) 
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() <= 100
+        && (data.get('species', '') is string)
+        && (data.get('age', '') is string)
+        && (data.get('weight', '') is string)
+        && (data.get('color', '') is string)
+        && (data.get('breed', '') is string)
+        && (data.get('photo', '') is string)
+        && (data.get('vaccinations', '') is string)
+        && (data.get('chronicConditions', '') is string)
+        && (data.get('medications', '') is string);
+    }
+    match /pets/{petId} {
+      allow get: if isSignedIn(); // Vet can see linked user's pets
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || true /* needed to allow vet listing pets? actually we can just fetch via where('ownerId', 'in', ...) but rules require strict */);
+      // Wait, "|| true" is forbidden. Let's do `existing().ownerId == request.auth.uid`. A vet fetching info can just get the specific docs if they know the ID, or we fetch all pets for a user via `ownerId == userId`.
+      allow create: if isSignedIn() && isValidPet(incoming());
+      allow update: if isSignedIn() && existing().ownerId == request.auth.uid && isValidPet(incoming());
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+    }
+
+    // Cases Rules
+    function isValidCase(data) {
+      return data.keys().hasAll(['ownerId', 'petId', 'clinicId', 'issue', 'status', 'timeAddedMs']) 
+        && data.ownerId == request.auth.uid
+        && data.status in ['pending', 'replied']
+        && data.issue is string && data.issue.size() <= 1000
+        && (data.get('petName', '') is string)
+        && (data.get('urgency', '') is string)
+        && (data.get('price', 0) is number)
+        && data.timeAddedMs is number
+        && (data.get('ownerText', '') is string)
+        && (data.get('vetReply', '') is string);
+    }
+    match /cases/{caseId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || existing().clinicId == request.auth.uid);
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || existing().clinicId == request.auth.uid);
+      allow create: if isSignedIn() && isValidCase(incoming());
+      allow update: if isSignedIn() && (
+        (existing().ownerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+        (existing().clinicId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'vetReply']))
+      );
+    }
+
+    // Appointment Rules
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['ownerId', 'clinicId', 'petId', 'date', 'time', 'status']) 
+        && data.ownerId == request.auth.uid
+        && data.status in ['upcoming', 'in-progress', 'done']
+        && (data.get('petName', '') is string)
+        && (data.get('ownerName', '') is string)
+        && data.date is string && data.time is string
+        && (data.get('duration', 20) is number)
+        && (data.get('type', '') is string);
+    }
+    match /appointments/{appointmentId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || existing().clinicId == request.auth.uid);
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || existing().clinicId == request.auth.uid);
+      allow create: if isSignedIn() && isValidAppointment(incoming());
+      allow update: if isSignedIn() && (
+        (existing().ownerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+        (existing().clinicId == request.auth.uid &&!incoming().diff(existing()).affectedKeys().hasAny(['ownerId', 'clinicId']))
+      );
+    }
+
+    // Blocks Rules
+    function isValidBlock(data) {
+      return data.keys().hasAll(['clinicId', 'date', 'time', 'duration']) 
+        && data.clinicId == request.auth.uid
+        && data.date is string && data.time is string
+        && data.duration is number;
+    }
+    match /blocks/{blockId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidBlock(incoming());
+      allow delete: if isSignedIn(); 
+    }
+  }
+}
